@@ -26,7 +26,7 @@ using namespace ev3api;
 #else
 #include "kernel_cfg.h"
 #endif
-
+//#include "FixedQueue.h"
 #define DEBUG
 
 #ifdef DEBUG
@@ -71,7 +71,7 @@ static FILE *bt = NULL; /* Bluetoothファイルハンドル */
 #define TAIL_ANGLE_DRIVE 3	 /* バランス走行時の角度[度] */
 
 // #define P_GAIN			  2.5F /* 完全停止用モータ制御比例係数 */
-#define P_GAIN 0.5F	/* 完全停止用モータ制御比例係数 */
+#define P_GAIN 0.6F	/* 完全停止用モータ制御比例係数 */
 #define PWM_ABS_MAX 60 /* 完全停止用モータ制御PWM絶対最大値 */
 /* sample_c4マクロ */
 //#define DEVICE_NAME	  "ET0"	 /* Bluetooth名 hrp2/target/ev3.h BLUETOOTH_LOCAL_NAMEで設定 */
@@ -85,7 +85,7 @@ static FILE *bt = NULL; /* Bluetoothファイルハンドル */
 
 static const int tailRunAngle = 67; // テール走行時テール角度（TODO:要調整）
 //static const int GATE_PASS_MILEAGE = 350; //ゲート通過距離（TODO:要調整）
-static const int GATE_PASS_MILEAGE = 150; //ゲート通過距離（TODO:要調整）
+static const int GATE_PASS_MILEAGE = 350; //ゲート通過距離（TODO:要調整）
 // PID制御（差分記録用）
 static int diff[2];	// 差分記録用
 static float integral; //
@@ -184,6 +184,7 @@ void main_task(intptr_t unused)
 	/////
 	// 光センサー値キャリブレーション
 	ev3_lcd_draw_string("Light callibration", 0, CALIB_FONT_HEIGHT * 1);
+	ev3_gyro_sensor_reset(gyro_sensor);
 	while (1)
 	{
 		char ms[32];
@@ -222,6 +223,10 @@ void main_task(intptr_t unused)
 		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 5);
 		sprintf(ms, "NCL : %s", col);
 		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 6);
+		sprintf(ms, "Volt : %d", ev3_battery_voltage_mV());
+		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 7);
+		sprintf(ms, "GYRO : %d", (int)ev3_gyro_sensor_get_angle(gyro_sensor));
+		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 8);
 	}
 	/////
 
@@ -263,10 +268,11 @@ void main_task(intptr_t unused)
 	bool cbuttonFlag = false;
 	int changeForwardNum = 0;
 	int changeTurnNum = 0;
+	bool startDush = true;
+	ScenarioState = LOOK_UP_GATE;
 	while (1)
 	{
 		//ScenarioState = COURSE_RUN;
-		ScenarioState = LOOK_UP_GATE;
 		// 走行終了(Backボタン)
 		ev3_lcd_fill_rect(0, 0, EV3_LCD_WIDTH, EV3_LCD_HEIGHT, EV3_LCD_WHITE);
 		if (ev3_button_is_pressed(BACK_BUTTON))
@@ -274,6 +280,11 @@ void main_task(intptr_t unused)
 
 		while (1)
 		{
+			// ルックアップゲートはスタートダッシュ必要なし(転倒時再開用)
+			if (ScenarioState == LOOK_UP_GATE)
+				startDush = false;
+			else
+				startDush = true;
 			tail_control(TAIL_ANGLE_STAND_UP); /* 完全停止用角度に制御 */
 											   //			tail_control(tail);
 			ev3_lcd_draw_string("TRAVEL SET MODE :UDLR btn:", 0, CALIB_FONT_HEIGHT * 1);
@@ -281,14 +292,14 @@ void main_task(intptr_t unused)
 			if (ev3_touch_sensor_is_pressed(touch_sensor) == 1)
 			{
 				flag = true;
-				// タッチセンサの揺れが収まるのを待ってからジャイロリセット
-				tslp_tsk(100);
-				RunParamReset();
 			}
 			else if ((ev3_touch_sensor_is_pressed(touch_sensor) == 0 && flag) || bt_cmd == 1)
 			{
 				bt_cmd = 0;
 				flag = false;
+				// タッチセンサの揺れが収まるのを待ってからジャイロリセット
+				tslp_tsk(20);
+				RunParamReset();
 				for (int i = 0; i < 20000; i++)
 				{
 					tail_control(TAIL_ANGLE_STAND_UP + 5);
@@ -394,10 +405,13 @@ void main_task(intptr_t unused)
 		tslp_tsk(5); /* 10msecウェイト */
 
 		// スタートダッシュ（前傾姿勢）
-		for (int i = 0; i < 100; i++)
+		if (startDush)
 		{
-			tail_control(TAIL_ANGLE_STAND_UP + 10);
-			tslp_tsk(1);
+			for (int i = 0; i < 100; i++)
+			{
+				tail_control(TAIL_ANGLE_STAND_UP + 10);
+				tslp_tsk(1);
+			}
 		}
 
 		// コース走行
@@ -775,11 +789,10 @@ void LookUpGate(bool init)
 
 	int forward = 0;
 	int turn = 0;
-
+	// 関数内のstaticは1回目の呼び出しだけ初期化されて2回目以降は初期化されないぞ！すごい！
 	// シーン内状態
 	static LookUpState State = TAIL_RUN;
 	// 走行距離測定用変数
-	// 関数内のstaticは1回目の呼び出しだけ初期化されて2回目以降は初期化されないぞ！すごい！
 	static int mMileage = (int)dist;
 	static int mTurn = turning_angle;
 
@@ -791,7 +804,16 @@ void LookUpGate(bool init)
 	// 攻略開始時パラメタを記録
 	int leftMotorAngle = ev3_motor_get_counts(right_motor);
 	int rightMotorAngle = -ev3_motor_get_counts(left_motor);
-	static int tailAngle = ev3_motor_get_counts(tail_motor);
+	int nowTailAngle = ev3_motor_get_counts(tail_motor);
+	static int tailAngle = nowTailAngle;
+	// テールの角度を段階的に調節する
+	static const int init_counter = 3;
+	static int tailAngleCounter = init_counter;
+	static int cnt = 0;
+	static const int arraySize = 30;
+	static int gyroAngle[arraySize] = {};
+	// 固定長キュー サイズをはみ出すと先頭から消えていく
+	//static FixedQueue<int> que(queSize);
 	// 引数initがtrueの場合、static変数を初期化してルックアップゲート攻略前状態に戻る
 	if (init)
 	{
@@ -799,6 +821,10 @@ void LookUpGate(bool init)
 		mMileage = (int)dist;
 		mTurn = turning_angle;
 		tailAngle = ev3_motor_get_counts(tail_motor);
+		tailAngleCounter = init_counter;
+		cnt = 0;
+		gyroAngle[arraySize] = {};
+		//que.clear();
 	}
 
 	int RADIUS = 80;
@@ -820,37 +846,46 @@ void LookUpGate(bool init)
 	switch (State)
 	{
 	case TAIL_RUN:
-	{
+
+		cnt++;
 		// テール走行用角度に移行　
 		forward = 0; // TODO
 		turn = 0;	// TODO
 
-		// テールモーター出力値を目標値との差に応じて決定
-		//float tail_pwm = (float)(TAIL_ANGLE_DRIVE + 1 - tailAngle) * P_GAIN; // 比例制御
-		//tail_control(tailRunAngle);
-		tailAngle = tailRunAngle;
-
-		// テールを後傾走行角度に設定した場合
-		if (ev3_motor_get_counts(tail_motor) <= tailRunAngle)
+		//tailAngle = tailRunAngle;
+		tailAngle = (tailRunAngle - TAIL_ANGLE_STAND_UP) / tailAngleCounter + TAIL_ANGLE_STAND_UP;
+		// 200ms毎に目標角度を変える
+		if (cnt % (200 / 4) == 0)
+		{
+			if (tailAngleCounter - 1 > 0)
+				tailAngleCounter--;
+		}
+		// テールを後傾走行角度に設定した場合。指定角度になっても少し待つ(TAIL_RUNの状態が1000msで完了予定)
+		if (ev3_motor_get_counts(tail_motor) <= tailRunAngle && cnt > 250)
 		{
 			State = STRAIGHT;
 			mTurn = nowTurningAngle;
+			tailAngleCounter = init_counter;
+			cnt = 0;
+			//ev3_speaker_play_tone(NOTE_AS6, 100);
 		}
-
 		break;
-	}
 	case STRAIGHT:
 		// 直進
-		forward = 20;
+		forward = 15;
 
 		// ゲートを超えた場合
 		if (moveDist > GATE_PASS_MILEAGE)
 		{
-			// 測定開始距離更新
-			mMileage = nowDist;
-			// 一度目は後退
-			//mTravelState = (mTravelState == 2) ? 3 : 5;
-			State = STAND_UP;
+			forward = 7;
+			cnt++;
+			if (cnt > 30)
+			{
+				// 測定開始距離更新
+				mMileage = nowDist;
+				State = STAND_UP;
+				cnt = 0;
+			}
 		}
 
 		break;
@@ -858,37 +893,55 @@ void LookUpGate(bool init)
 		break;
 	case STAND_UP:
 	{
+		
 		// 起き上がり
-		forward = 0;
+		forward = -15;
 		turn = 0;
 
-		// // テールモーター出力値を目標値との差に応じて決定
-		// float tail_pwm = (float)(GATE_TAIL_TRAVEL_ANGLE - tailAngle) * GATE_TAIL_P_GAIN; // 比例制御
-		// // テールモーター出力値を設定
-		// motorParam[2] = tail_pwm;
 		tailAngle = TAIL_ANGLE_STAND_UP + 5;
+		// int target_angle = TAIL_ANGLE_STAND_UP + 5;
 
-		// テールを走行角度に設定した場合
-		if (ev3_motor_get_counts(tail_motor) >= TAIL_ANGLE_STAND_UP + 5 - 1)
+		// テールを起き上がり角度に設定した場合。指定角度になっても少し待つ(STAND_UPの状態が1400msで完了予定)350
+		//if (ev3_motor_get_counts(tail_motor) >= TAIL_ANGLE_STAND_UP && cnt > 900)ev3_gyro_sensor_get_rate(gyro_sensor)
+
+		int gyro_angle = ev3_gyro_sensor_get_angle(gyro_sensor);
+		gyroAngle[cnt] = gyro_angle;
+		cnt++;
+		if(cnt >= arraySize)
+			cnt = 0;
+		float sum = 0;
+		for (int item : gyroAngle)
+		{
+			sum += (float)item;
+		}
+		// 直近30個のジャイロ角度値の平均がN以上のとき直立とみなす
+		if (sum / arraySize > 2)
 		{
 			// 走行状態を更新
+			forward = 15;
+			turn = 10;
+			tailAngle = TAIL_ANGLE_DRIVE;
+			blance = true;
 			State = END;
+			tailAngleCounter = init_counter;
+			cnt = 0;
 		}
 		break;
 	}
 	default:
-		forward = 3;
-		turn = 0;
+		forward = 15;
+		turn = 10;
 		tailAngle = TAIL_ANGLE_DRIVE;
 		blance = true;
-		/* 倒立振子制御API に渡すパラメータを取得する */
-
 		break;
 	}
+	//テール操作
 	tail_control(tailAngle);
+	//車輪操作
 	// バランサー使用
 	if (blance == true)
 	{
+		/* 倒立振子制御API に渡すパラメータを取得する */
 		motor_ang_l = ev3_motor_get_counts(left_motor);
 		motor_ang_r = ev3_motor_get_counts(right_motor);
 		gyro = ev3_gyro_sensor_get_rate(gyro_sensor);
