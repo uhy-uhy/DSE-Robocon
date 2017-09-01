@@ -44,9 +44,9 @@
                 "C:/Program Files (x86)/Windows Kits/8.1/Include/um",
                 "C:/Program Files (x86)/Windows Kits/8.1/Include/shared",
                 "C:/Program Files (x86)/Windows Kits/8.1/Include/winrt",
-                "E:/cygwin64/hrp2/sdk/common",
-                "E:/cygwin64/hrp2/base-workspace/OBJ",
-                "E:/cygwin64/hrp2/sdk/OBJ",
+                "C:/cygwin64/hrp2/sdk/common",
+                "C:/cygwin64/hrp2/base-workspace/OBJ",
+                "C:/cygwin64/hrp2/sdk/OBJ",
                 "${workspaceRoot}"
             ],
             "defines": [
@@ -59,9 +59,9 @@
                     "C:/Program Files (x86)/Windows Kits/8.1/Include/um",
                     "C:/Program Files (x86)/Windows Kits/8.1/Include/shared",
                     "C:/Program Files (x86)/Windows Kits/8.1/Include/winrt",
-                    "E:/cygwin64/hrp2/sdk/common",
-                    "E:/cygwin64/hrp2/base-workspace/OBJ",
-                    "E:/cygwin64/hrp2/sdk/OBJ",
+                    "C:/cygwin64/hrp2/sdk/common",
+                    "C:/cygwin64/hrp2/base-workspace/OBJ",
+                    "C:/cygwin64/hrp2/sdk/OBJ",
                     "${workspaceRoot}"
                 ],
                 "limitSymbolsToIncludedHeaders": true,
