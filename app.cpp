@@ -26,7 +26,6 @@ using namespace ev3api;
 #else
 #include "kernel_cfg.h"
 #endif
-//#include "FixedQueue.h"
 #define DEBUG
 
 #ifdef DEBUG
@@ -67,7 +66,7 @@ static FILE *bt = NULL; /* Bluetoothファイルハンドル */
 #define SONAR_ALERT_DISTANCE 30 /* 超音波センサによる障害物検知距離[cm] */
 /* sample_c3マクロ */
 // テール角度
-#define TAIL_ANGLE_STAND_UP 87 /* 完全停止時の角度[度] */
+#define TAIL_ANGLE_STAND_UP 85 /* 完全停止時の角度[度] */
 #define TAIL_ANGLE_DRIVE 3	 /* バランス走行時の角度[度] */
 
 // #define P_GAIN			  2.5F /* 完全停止用モータ制御比例係数 */
@@ -85,7 +84,8 @@ static FILE *bt = NULL; /* Bluetoothファイルハンドル */
 
 static const int tailRunAngle = 67; // テール走行時テール角度（TODO:要調整）
 //static const int GATE_PASS_MILEAGE = 350; //ゲート通過距離（TODO:要調整）
-static const int GATE_PASS_MILEAGE = 350; //ゲート通過距離（TODO:要調整）
+// 試走会用
+static const int GATE_PASS_MILEAGE = 1000; //ゲート通過距離（TODO:要調整）
 // PID制御（差分記録用）
 static int diff[2];	// 差分記録用
 static float integral; //
@@ -96,8 +96,12 @@ static float s_dist = 0;		// 距離計測開始時走行距離
 static int turning_angle = 0;   // 総旋回角度
 static int s_turning_angle = 0; // 計測開始時
 
-static int init_forward = 70;
-static int init_turn = 20;
+//Rコース用パラメータ
+//static int init_forward = 100;
+//static int init_turn = 20;
+//Lコース用パラメータ
+static int init_forward = 80;
+static int init_turn = 25;
 
 static int line_white = 0;
 static int line_gray = 0;
@@ -124,6 +128,7 @@ enum LookUpState
 	STRAIGHT,
 	TURN,
 	STAND_UP,
+	GO_GARAGE,
 	END
 };
 
@@ -185,49 +190,49 @@ void main_task(intptr_t unused)
 	// 光センサー値キャリブレーション
 	ev3_lcd_draw_string("Light callibration", 0, CALIB_FONT_HEIGHT * 1);
 	ev3_gyro_sensor_reset(gyro_sensor);
-	while (1)
-	{
-		char ms[32];
+	// while (1)
+	// {
+	// 	char ms[32];
 
-		if (ev3_button_is_pressed(BACK_BUTTON))
-			break;
+	// 	if (ev3_button_is_pressed(BACK_BUTTON))
+	// 		break;
 
-		if (ev3_button_is_pressed(RIGHT_BUTTON))
-		{
-			line_white = (int)csCS.getBrightness();
-		}
+	// 	if (ev3_button_is_pressed(RIGHT_BUTTON))
+	// 	{
+	// 		line_white = (int)csCS.getBrightness();
+	// 	}
 
-		if (ev3_button_is_pressed(DOWN_BUTTON))
-		{
-			line_gray = (int)csCS.getBrightness();
-		}
+	// 	if (ev3_button_is_pressed(DOWN_BUTTON))
+	// 	{
+	// 		line_gray = (int)csCS.getBrightness();
+	// 	}
 
-		if (ev3_button_is_pressed(LEFT_BUTTON))
-		{
-			line_black = (int)csCS.getBrightness();
-		}
+	// 	if (ev3_button_is_pressed(LEFT_BUTTON))
+	// 	{
+	// 		line_black = (int)csCS.getBrightness();
+	// 	}
 
-		int c = csLineMonitor.mDecideColor(csCS.getBrightness());
-		char *col;
-		col = (c == 0) ? const_cast<char *>("BLACK")
-					   : (c == 1) ? const_cast<char *>("GRAY ")
-								  : const_cast<char *>("WHITE");
+	// 	int c = csLineMonitor.mDecideColor(csCS.getBrightness());
+	// 	char *col;
+	// 	col = (c == 0) ? const_cast<char *>("BLACK")
+	// 				   : (c == 1) ? const_cast<char *>("GRAY ")
+	// 							  : const_cast<char *>("WHITE");
 
-		sprintf(ms, ":Rbtn: W : %03d", line_white);
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 2);
-		sprintf(ms, ":Dbtn: G : %03d", line_gray);
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 3);
-		sprintf(ms, ":line_blacktn: B : %03d", line_black);
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 4);
-		sprintf(ms, "NOW : %03d", csCS.getBrightness());
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 5);
-		sprintf(ms, "NCL : %s", col);
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 6);
-		sprintf(ms, "Volt : %d", ev3_battery_voltage_mV());
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 7);
-		sprintf(ms, "GYRO : %d", (int)ev3_gyro_sensor_get_angle(gyro_sensor));
-		ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 8);
-	}
+	// 	sprintf(ms, ":Rbtn: W : %03d", line_white);
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 2);
+	// 	sprintf(ms, ":Dbtn: G : %03d", line_gray);
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 3);
+	// 	sprintf(ms, ":line_blacktn: B : %03d", line_black);
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 4);
+	// 	sprintf(ms, "NOW : %03d", csCS.getBrightness());
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 5);
+	// 	sprintf(ms, "NCL : %s", col);
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 6);
+	// 	sprintf(ms, "Volt : %d", ev3_battery_voltage_mV());
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 7);
+	// 	sprintf(ms, "GYRO : %d", (int)ev3_gyro_sensor_get_angle(gyro_sensor));
+	// 	ev3_lcd_draw_string(ms, 0, CALIB_FONT_HEIGHT * 8);
+	// }
 	/////
 
 	/* スタート待機 */
@@ -269,10 +274,10 @@ void main_task(intptr_t unused)
 	int changeForwardNum = 0;
 	int changeTurnNum = 0;
 	bool startDush = true;
-	ScenarioState = LOOK_UP_GATE;
+	//ScenarioState = LOOK_UP_GATE;
+	ScenarioState = COURSE_RUN;
 	while (1)
 	{
-		//ScenarioState = COURSE_RUN;
 		// 走行終了(Backボタン)
 		ev3_lcd_fill_rect(0, 0, EV3_LCD_WIDTH, EV3_LCD_HEIGHT, EV3_LCD_WHITE);
 		if (ev3_button_is_pressed(BACK_BUTTON))
@@ -455,19 +460,53 @@ void main_task(intptr_t unused)
 				ev3_motor_stop(tail_motor, false);
 				tslp_tsk(10); /* 10msecウェイト */
 
-				// ev3_motor_reset_counts(left_motor);
-				// ev3_motor_reset_counts(right_motor);
-				// tslp_tsk(10); /* 10msecウェイト */
-				// ev3_gyro_sensor_reset(gyro_sensor);
-				// tslp_tsk(10); /* 10msecウェイト */
-				// balance_init(); /* 倒立振子API初期化 */
-				// tslp_tsk(10); /* 10msecウェイト */
-
 				bt_cmd = 0;
 				flag = false;
 				// シナリオ内部状態の初期化
 				scenario_init = true;
 				break;
+			}
+			// 神のパラメータ（ルックアップゲート通過可能、まるで灰色を検知しているかのような）
+			// 試走会用強引にルックアップゲートへ
+			// int GATE_DIST = 12200;
+			else if(dist > 30 && ScenarioState == COURSE_RUN){
+				forward = 0;
+				turn = 0;
+
+				// テール静止角度
+				for (int i = 0; i < 10000; i++)
+				{
+					tail_control(TAIL_ANGLE_STAND_UP - 2 - (5 / (10001 - i)));
+				}
+
+				// 後傾移行（微直進）
+				for (int i = 0; i < 50; i++)
+				{
+					ev3_motor_set_power(left_motor, 40);
+					ev3_motor_set_power(right_motor, 40);
+					tslp_tsk(1);
+				}
+				// モーター停止
+				ev3_motor_stop(left_motor, false);
+				ev3_motor_stop(right_motor, false);
+				ev3_motor_stop(tail_motor, false);
+				//tslp_tsk(1000); /* 10000msecウェイト */
+				ScenarioState = LOOK_UP_GATE;
+			}
+			//試走会用（緊急）
+			// if(dist > 80000){
+			// 	forward = 120;
+			// }
+			// if(dist > 10400){
+			// 	forward = 40;
+			// }
+			// if(dist > 11600){
+			// 	forward = 20;
+			// }
+
+			// 階段用
+			if(dist > 11266){
+			 	forward = 20;
 			}
 
 			// 走行体状態表示
@@ -646,6 +685,7 @@ void bt_task(intptr_t unused)
 //*****************************************************************************
 void Run(int forward, int turn)
 {
+	
 	switch (ScenarioState)
 	{
 	case INIT:
@@ -735,7 +775,8 @@ void CourseRun(int forward, int turn)
 	/* 左右モータ出力値を得る */
 	balance_control(
 		(float)forward,
-		(float)turn,
+		(float)0,
+		// (float)turn,
 		(float)gyro,
 		(float)GYRO_OFFSET,
 		(float)motor_ang_l,
@@ -810,10 +851,8 @@ void LookUpGate(bool init)
 	static const int init_counter = 3;
 	static int tailAngleCounter = init_counter;
 	static int cnt = 0;
-	static const int arraySize = 30;
+	static const int arraySize = 50;
 	static int gyroAngle[arraySize] = {};
-	// 固定長キュー サイズをはみ出すと先頭から消えていく
-	//static FixedQueue<int> que(queSize);
 	// 引数initがtrueの場合、static変数を初期化してルックアップゲート攻略前状態に戻る
 	if (init)
 	{
@@ -824,7 +863,6 @@ void LookUpGate(bool init)
 		tailAngleCounter = init_counter;
 		cnt = 0;
 		gyroAngle[arraySize] = {};
-		//que.clear();
 	}
 
 	int RADIUS = 80;
@@ -928,6 +966,11 @@ void LookUpGate(bool init)
 		}
 		break;
 	}
+	case GO_GARAGE:
+		forward = 15;
+		turn = 10;
+		tailAngle = TAIL_ANGLE_STAND_UP - 5;
+	break;
 	default:
 		forward = 15;
 		turn = 10;
