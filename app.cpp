@@ -526,7 +526,7 @@ void main_task(intptr_t unused)
 
 		tslp_tsk(10); /* 10msecウェイト */
 	}
-	// 終了処理
+	// 終了処理.
 	// モーター停止
 	ev3_motor_stop(left_motor, false);
 	ev3_motor_stop(right_motor, false);
